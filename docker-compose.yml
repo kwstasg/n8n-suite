@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: n8n-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:stable
+    container_name: n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=n8n-postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_RUNNERS_MODE=external
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+      - N8N_NATIVE_PYTHON_RUNNER=true
+      - GENERIC_TIMEZONE=Europe/Athens
+      # - N8N_EMAIL_MODE=smtp
+      # - N8N_SMTP_HOST=127.0.0.1
+      # - N8N_SMTP_PORT=25
+      # - N8N_SMTP_SENDER=n8n@domain.gr
+      # - N8N_SMTP_SSL=false
+      # - HTTP_PROXY=http://proxy.domain.gr:8080
+      # - HTTPS_PROXY=http://proxy.domain.gr:8080
+      # - NO_PROXY=localhost,127.0.0.1,::1
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  task-runners:
+    build:
+      context: .
+      dockerfile: Dockerfile.runners
+    container_name: n8n-runners
+    restart: unless-stopped
+    depends_on:
+      - n8n
+    environment:
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+      - N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT=15
+
+volumes:
+  n8n_data:
+  postgres_data:
